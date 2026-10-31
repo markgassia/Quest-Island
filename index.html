@@ -167,6 +167,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:4px solid 
 
 /* grown-ups */
 .gate{padding:28px;max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center}
+.gate input{font:inherit;font-size:24px;padding:12px 16px;border-radius:14px;border:3px solid var(--sand-2);background:var(--white);color:var(--ink);width:min(340px,100%);text-align:center;user-select:text;-webkit-user-select:text}
+.parent input{user-select:text;-webkit-user-select:text}
 .parent{display:flex;flex-direction:column;gap:18px}
 .pcard{padding:22px;display:flex;flex-direction:column;gap:14px}
 .prow{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
@@ -966,7 +968,7 @@ function mergeRemote(R){if(!R||!Array.isArray(R.kids))return;
     if(!lk){S.kids.push(upgrade(rk));return}
     /* same id: newest copy wins. Same name on a new device: the family's cloud copy wins */
     if(!byId||(rk.updatedAt||0)>(lk.updatedAt||0)){for(const key of Object.keys(lk))delete lk[key];Object.assign(lk,rk);upgrade(lk)}});
-  if((R.famUpdated||0)>(S.famUpdated||0)){S.rewards=R.rewards||S.rewards;S.famUpdated=R.famUpdated}}
+  if((R.famUpdated||0)>(S.famUpdated||0)){S.rewards=R.rewards||S.rewards;if(R.pwHash)S.pwHash=R.pwHash;S.famUpdated=R.famUpdated}}
 function queueSync(){if(!sb())return;clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,2500)}
 function syncLine(){if(!syncAvailable())return 'Cloud sync works in the installed version of the app. This test copy saves on this device only.';
   const c=sb();if(!c)return 'Not set up yet. Add your Supabase details below (see the setup guide).';
@@ -976,8 +978,13 @@ function syncCard(){const c=sb(),cf=syncCfg();
   ${!syncAvailable()?'':!c?`<div class="prow"><input id="sburl" placeholder="Supabase project URL" value="${esc(cf.url)}" style="flex:1;min-width:220px"><input id="sbkey" placeholder="Supabase anon public key" value="${esc(cf.key)}" style="flex:1;min-width:220px"><button class="btn" data-act="sbsave">Save</button></div>`
    :`<div class="prow" id="authrow"><span class="small">Checking sign-in…</span></div>`}</div>`}
 async function paintAuth(){const c=sb(),row=document.getElementById('authrow');if(!c||!row)return;const {data:{session}}=await c.auth.getSession();
-  row.innerHTML=session?`<span class="small">Signed in as <b>${esc(session.user.email||'family')}</b></span><button class="btn" data-act="syncnow">Sync now</button><button class="btn ghost" data-act="signout">Sign out</button>`
-   :`<input id="sbemail" type="email" autocomplete="username" placeholder="Family email"><input id="sbpass" type="password" autocomplete="current-password" placeholder="Password"><button class="btn" data-act="signin">Sign in</button>`}
+  row.innerHTML=session?`<span class="small">Signed in as <b>${esc(session.user.email||'family')}</b></span><button class="btn" data-act="syncnow">Sync now</button><button class="btn ghost" data-act="signout">Sign out</button>
+    <form id="fpform" class="prow" style="width:100%"><span class="small muted" style="width:100%">Change the family sign-in password (used once on each device):</span><input id="fp1" type="password" autocomplete="new-password" autocapitalize="off" placeholder="New family password" style="flex:1;min-width:180px"><input id="fp2" type="password" autocomplete="new-password" autocapitalize="off" placeholder="Type it again" style="flex:1;min-width:180px"><button class="btn ghost" type="submit">Change family password</button><span class="small" id="fpmsg" style="width:100%"></span></form>`
+   :`<input id="sbemail" type="email" autocomplete="username" placeholder="Family email"><input id="sbpass" type="password" autocomplete="current-password" placeholder="Password"><button class="btn" data-act="signin">Sign in</button>`
+  const fp=document.getElementById('fpform');if(fp)fp.onsubmit=async e=>{e.preventDefault();const a=document.getElementById('fp1').value,b=document.getElementById('fp2').value,m=document.getElementById('fpmsg');
+    if(a.length<8){m.textContent='Use at least 8 characters.';return}if(a!==b){m.textContent="The two passwords don't match.";return}
+    m.textContent='Changing…';const {error}=await c.auth.updateUser({password:a});
+    m.textContent=error?'Could not change it: '+error.message:'Family password changed. Devices already signed in stay signed in; use the new password on any new device.';if(!error)document.getElementById('fp1').value=document.getElementById('fp2').value=''}}
 
 /* ---------- arcade: shared question helper (maths facts plus some word questions) ---------- */
 function mixQ(){if(Math.random()<.7){const f=factQ();return{text:`${f.text} = ?`,ans:String(f.ans),wrong:f.wrong.map(String)}}
@@ -1225,15 +1232,30 @@ function playCycle(){arcT0=Date.now();const E=arcShell('Mountain Cycle',`<div cl
     if(st.msgT>0){st.msgT--;txt(ctx,st.msg,400,120,26,'#1f2a30')}})}
 
 /* grown-ups (js) */
-function vGate(){const a=ri(12,19),b=ri(3,9);gateAns=String(a*b);G={mode:'gate',input:''};
+/* grown-ups password: only a salted SHA-256 fingerprint is stored, never the password itself */
+const DEFAULT_PW_HASH='d5945f7a291f49465eb73e8a5960267b39f912cc31454e5ff8c0078c4f71621f';
+const pwHash=()=>S.pwHash||DEFAULT_PW_HASH;
+async function sha(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('qi-salt:'+s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+function vGate(){G={mode:'gate'};
   app.innerHTML=`<div class="topbar"><button class="back" data-act="profiles" aria-label="Back">‹</button><h1>Grown-ups</h1></div>
-  <div class="card gate"><p style="margin:0">Answer to continue</p><div class="q big">${a} × ${b}</div><div class="entry"><div class="display" id="disp">&nbsp;</div>
-  <div class="pad">${[1,2,3,4,5,6,7,8,9].map(d=>`<button class="key" data-act="key" data-arg="${d}">${d}</button>`).join('')}<button class="key del" data-act="key" data-arg="del" aria-label="Delete">⌫</button><button class="key" data-act="key" data-arg="0">0</button><button class="key go" data-act="key" data-arg="go" aria-label="Check">✓</button></div></div></div>`}
+  <form class="card gate" id="gateform" autocomplete="on"><label for="gpw" class="disp" style="font-size:26px">Enter the grown-ups password</label>
+  <input id="gpw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <button class="btn" type="submit">Unlock</button><p class="small" id="gmsg" style="margin:0;min-height:1.4em;color:var(--coral);font-weight:700"></p></form>`;
+  const f=document.getElementById('gateform'),inp=document.getElementById('gpw');
+  f.onsubmit=async e=>{e.preventDefault();let ok=false;try{ok=(await sha(inp.value))===pwHash()}catch(err){}
+    if(ok)return vParent();document.getElementById('gmsg').textContent="That password isn't right. Check capital letters and symbols.";inp.value='';f.classList.remove('shake');void f.offsetWidth;f.classList.add('shake');inp.focus()};
+  setTimeout(()=>inp.focus(),60)}
+function pwCard(){return `<div class="card pcard"><div class="secth" style="padding:0">Grown-ups password</div>
+  <form class="prow" id="pwform"><input id="pw1" type="password" autocomplete="new-password" autocapitalize="off" placeholder="New password" style="flex:1;min-width:180px"><input id="pw2" type="password" autocomplete="new-password" autocapitalize="off" placeholder="Type it again" style="flex:1;min-width:180px"><button class="btn ghost" type="submit">Change password</button></form>
+  <p class="small" id="pwmsg" style="margin:0"></p></div>`}
+async function savePw(e){e.preventDefault();const a=document.getElementById('pw1').value,b=document.getElementById('pw2').value,m=document.getElementById('pwmsg');
+  if(a.length<4){m.textContent='Use at least 4 characters.';return}if(a!==b){m.textContent="The two passwords don't match.";return}
+  S.pwHash=await sha(a);S.famUpdated=Date.now();saveLocal();queueSync();m.textContent='Password changed on all devices (once they sync).';document.getElementById('pw1').value=document.getElementById('pw2').value=''}
 function vParent(){G={mode:'parent'};
   const block=(k,ki,list,title)=>`<tr><td colspan="4" class="secth">${title}</td></tr>`+list.map(id=>{const s=k.skills[id];const lv=s?s.lvl:(k.year>=3?2:1);
     return `<tr><td>${SK[id].n}</td><td><span class="pips">${[1,2,3,4,5].map(i=>`<i class="${i<=lv?'on':''}"></i>`).join('')}</span> <span class="muted small">${LVL[lv]}</span></td><td>${s&&s.n?Math.round(s.c/s.n*100)+'%':'–'}</td><td>${s?s.n:0}</td></tr>`}).join('');
   app.innerHTML=`<div class="topbar"><button class="back" data-act="profiles" aria-label="Back">‹</button><h1>Progress</h1><button class="pill" data-act="sound">Sound: ${S.sound?'on':'off'}</button></div>
-  <div class="parent">${syncCard()}${rewardsCard()}${S.kids.map((k,ki)=>{const tot=Object.values(k.skills).reduce((a,s)=>a+s.n,0),cor=Object.values(k.skills).reduce((a,s)=>a+s.c,0);
+  <div class="parent">${syncCard()}${pwCard()}${rewardsCard()}${S.kids.map((k,ki)=>{const tot=Object.values(k.skills).reduce((a,s)=>a+s.n,0),cor=Object.values(k.skills).reduce((a,s)=>a+s.c,0);
     return `<div class="card pcard"><div class="prow"><label class="small muted" for="nm${ki}">Name</label><input id="nm${ki}" value="${esc(k.name)}" maxlength="16" data-chg="name" data-arg="${ki}">
       <label class="small muted" for="yr${ki}">Year</label><select id="yr${ki}" data-chg="year" data-arg="${ki}">${[1,2,3,4].map(y=>`<option ${k.year===y?'selected':''}>${y}</option>`).join('')}</select>
       <span class="muted small">${tot} questions · ${tot?Math.round(cor/tot*100):0}% correct · ${k.gems} gems · ${k.tokens} tokens · best blitz ${k.best}</span></div>
@@ -1251,7 +1273,7 @@ function vParent(){G={mode:'parent'};
       <div class="tablewrap"><table><thead><tr><th>Skill</th><th>Level</th><th>Accuracy</th><th>Tried</th></tr></thead><tbody>${block(k,ki,MATHS,'Maths')}${block(k,ki,VR,'Verbal reasoning')}</tbody></table></div>
       ${confirmReset===ki?`<div class="confirm"><b>Reset all of ${esc(k.name)}'s progress and creatures?</b><button class="btn" data-act="doreset" data-arg="${ki}">Yes, reset</button><button class="btn ghost" data-act="noreset">Keep</button></div>`:`<div><button class="linkbtn" style="color:var(--coral)" data-act="askreset" data-arg="${ki}">Reset progress</button></div>`}
     </div>`}).join('')}
-  <p class="note">Levels are a rough guide. Level 3 aims at the 7+ entry standard for selective London schools, level 4 at 8+, level 5 stretches towards 11+ reasoning. A skill moves up after 4 right in a row and down after 2 misses in 3. <b>Spacing:</b> a skill answered correctly is due again after ½ to 7 days, depending on level, and due skills come up far more often. Missed questions return as Flashbacks after 10 minutes, 1 day, 3 days and 7 days, and graduate once remembered at every step. <b>Retrieval:</b> Memory Mission mixes those Flashbacks with due skills across maths and reasoning. <b>Self-check accuracy</b> counts "sure" answers that were right plus "guessing / think so" answers that were wrong, so it measures how well they know what they know. ${window.supabase?'Progress syncs across devices when cloud sync is signed in.':'This test copy saves progress on this device only.'}</p></div>`;paintAuth()}
+  <p class="note">Levels are a rough guide. Level 3 aims at the 7+ entry standard for selective London schools, level 4 at 8+, level 5 stretches towards 11+ reasoning. A skill moves up after 4 right in a row and down after 2 misses in 3. <b>Spacing:</b> a skill answered correctly is due again after ½ to 7 days, depending on level, and due skills come up far more often. Missed questions return as Flashbacks after 10 minutes, 1 day, 3 days and 7 days, and graduate once remembered at every step. <b>Retrieval:</b> Memory Mission mixes those Flashbacks with due skills across maths and reasoning. <b>Self-check accuracy</b> counts "sure" answers that were right plus "guessing / think so" answers that were wrong, so it measures how well they know what they know. ${window.supabase?'Progress syncs across devices when cloud sync is signed in.':'This test copy saves progress on this device only.'}</p></div>`;paintAuth();const pf=document.getElementById('pwform');if(pf)pf.onsubmit=savePw}
 function rewardsCard(){return `<div class="card pcard"><div class="secth" style="padding:0">Reward menu</div><p class="small muted" style="margin:0">Tick the rewards you're happy to give. Each child picks their own goal from the ticked ones.</p>
   <div class="rwlist">${S.rewards.map((r,i)=>`<div class="rwrow"><label><input type="checkbox" data-chg="rwon" data-arg="${i}" ${r.on?'checked':''}> ${esc(r.label)}</label><select data-chg="rwtier" data-arg="${i}" aria-label="Tier for ${esc(r.label)}"><option value="small" ${r.tier==='small'?'selected':''}>Small treat</option><option value="big" ${r.tier==='big'?'selected':''}>Save up</option></select></div>`).join('')}</div>
   <div class="prow"><input id="rwnew" placeholder="Add your own reward" maxlength="40" style="flex:1;min-width:200px"><select id="rwnewtier"><option value="small">Small treat</option><option value="big">Save up</option></select><button class="btn ghost" data-act="rwadd">Add</button></div></div>`}
