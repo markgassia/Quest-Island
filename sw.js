@@ -2,7 +2,7 @@
    Network first, so a new version reaches the tablets as soon as they're online;
    falls back to the saved copy when there's no connection.
    Change VERSION whenever you upload new files. */
-const VERSION = 'quest-island-v7';
+const VERSION = 'quest-island-v9';
 const SHELL = ['./', './index.html', './config.js', './supabase.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
